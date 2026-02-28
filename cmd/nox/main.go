@@ -200,7 +200,8 @@ func runTest(modelPath string) {
 				case tcell.KeyRune:
 					switch ev.Rune() {
 					case 'q', 'Q':
-						running = false
+						shouldAutoRotate = false
+						modelRotation -= 0.1
 					case 'r', 'R':
 						// Toggle auto-rotation
 						shouldAutoRotate = !shouldAutoRotate
@@ -230,6 +231,12 @@ func runTest(modelPath string) {
 						rasterizer.Mode = render.RenderModeSolid
 					case '2':
 						rasterizer.Mode = render.RenderModeWireframe
+					case 'z', 'Z':
+						shouldAutoRotate = false
+						camera.Zoom(-0.5)
+					case 'x', 'X':
+						shouldAutoRotate = false
+						camera.Zoom(0.5)
 					}
 				}
 

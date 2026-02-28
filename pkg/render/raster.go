@@ -277,7 +277,7 @@ func (r *Rasterizer) toScreen(v scene.Vec3) scene.Vec3 {
 	// Note: Y coordinate needs adjustment for character aspect ratio
 	// Terminal characters are ~2x taller than wide, so we compress Y by 0.5
 	x := (v.X + 1.0) * float32(r.width) * 0.5
-	y := (1.0 - v.Y) * float32(r.height) * 0.5
+	y := (1.0 - v.Y) * float32(r.height) * 0.5 * 0.5 // Apply 0.5 multiplier for aspect ratio
 	return scene.Vec3{X: x, Y: y, Z: v.Z}
 }
 

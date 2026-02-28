@@ -53,7 +53,10 @@ make build-static
 | Zoom | Mouse wheel |
 | Move target | W/A/S/D |
 | Rotate model | E |
-| Exit | ESC or Ctrl+C |
+| Toggle auto-rotate | R or Space |
+| Switch to solid mode | 1 |
+| Switch to wireframe mode | 2 |
+| Exit | ESC or Ctrl+C or Q |
 
 ## Shell Completion
 
@@ -81,6 +84,22 @@ Enable tab completion for your shell:
 - Go 1.24+
 - Terminal with 24-bit true color support
 - Mouse-enabled terminal (most modern terminals)
+
+### Recommended Terminal Settings
+
+For the best viewing experience:
+
+- **Use a monospaced (fixed-width) font** - This ensures proper character alignment and aspect ratio
+- **Reduce font size** - Smaller fonts provide higher "resolution" and more detail in the rendered models
+- **Enable true color support** - Most modern terminals support 24-bit color by default
+- **Recommended fonts**:
+  - JetBrains Mono
+  - Fira Code
+  - Consolas
+  - Monaco
+  - Courier New
+
+**Tip**: Try reducing your terminal font size to 8-10pt for the best visual quality. The smaller the characters, the more detailed the 3D rendering will appear.
 
 ## Building
 
