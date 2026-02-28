@@ -47,8 +47,11 @@ type ScreenBuffer interface {
 func (r *Rasterizer) Render(mesh *scene.Mesh, mvp scene.Mat4, buffer ScreenBuffer) {
 	r.ClearDepth()
 
-	// Light direction (normalized)
-	lightDir := scene.Normalize(scene.Vec3{X: 0.5, Y: 0.7, Z: 1.0})
+	// Enhanced lighting setup with multiple light sources
+	// Main light (key light) - from upper right
+	keyLight := scene.Normalize(scene.Vec3{X: 0.6, Y: 0.8, Z: 1.0})
+	// Fill light - from left
+	fillLight := scene.Normalize(scene.Vec3{X: -0.5, Y: 0.3, Z: 0.5})
 
 	for _, tri := range mesh.Triangles {
 		// Transform vertices
@@ -74,12 +77,45 @@ func (r *Rasterizer) Render(mesh *scene.Mesh, mvp scene.Mat4, buffer ScreenBuffe
 		worldEdge2 := scene.Sub(tri.V2, tri.V0)
 		faceNormal := scene.Normalize(scene.Cross(worldEdge1, worldEdge2))
 
-		// Calculate lighting (simple diffuse)
-		intensity := scene.Dot(faceNormal, lightDir)
-		if intensity < 0 {
-			intensity = 0
+		// Enhanced lighting calculation with multiple lights
+		// Key light contribution (main directional light)
+		keyIntensity := scene.Dot(faceNormal, keyLight)
+		if keyIntensity < 0 {
+			keyIntensity = 0
 		}
-		intensity = 0.2 + 0.8*intensity // Add ambient
+
+		// Fill light contribution (softer secondary light)
+		fillIntensity := scene.Dot(faceNormal, fillLight)
+		if fillIntensity < 0 {
+			fillIntensity = 0
+		}
+
+		// Specular highlight simulation (view-dependent)
+		// Calculate reflection vector for specular
+		viewDir := scene.Normalize(scene.Vec3{X: 0, Y: 0, Z: 1})
+		reflectDir := scene.Sub(
+			scene.Vec3{
+				X: 2 * faceNormal.X * keyIntensity,
+				Y: 2 * faceNormal.Y * keyIntensity,
+				Z: 2 * faceNormal.Z * keyIntensity,
+			},
+			keyLight,
+		)
+		specular := scene.Dot(reflectDir, viewDir)
+		if specular < 0 {
+			specular = 0
+		}
+		specular = float32(math.Pow(float64(specular), 16)) // Shininess factor
+
+		// Combine lighting: ambient + diffuse (key + fill) + specular
+		ambient := float32(0.15)
+		diffuse := keyIntensity*0.7 + fillIntensity*0.3
+		intensity := ambient + diffuse + specular*0.4
+
+		// Clamp intensity
+		if intensity > 1.0 {
+			intensity = 1.0
+		}
 
 		// Get color and character based on intensity
 		char, color := r.intensityToChar(intensity)
@@ -92,28 +128,29 @@ func (r *Rasterizer) Render(mesh *scene.Mesh, mvp scene.Mat4, buffer ScreenBuffe
 // toScreen converts NDC coordinates to screen space
 func (r *Rasterizer) toScreen(v scene.Vec3) scene.Vec3 {
 	// NDC is in [-1, 1], convert to screen coordinates
-	// Note: multiply Y by 2 to account for character aspect ratio (chars are ~2x taller than wide)
+	// Note: Y coordinate needs adjustment for character aspect ratio
+	// Terminal characters are ~2x taller than wide, so we compress Y by 0.5
 	x := (v.X + 1.0) * float32(r.width) * 0.5
-	y := (1.0 - v.Y) * float32(r.height) * 0.5 * 0.5 // Adjust for aspect ratio
+	y := (1.0 - v.Y) * float32(r.height) * 0.5
 	return scene.Vec3{X: x, Y: y, Z: v.Z}
 }
 
-// intensityToChar maps light intensity to character and color
+// intensityToChar maps light intensity to character and color with enhanced 3D effect
 func (r *Rasterizer) intensityToChar(intensity float32) (rune, tcell.Color) {
-	// ASCII art style mapping
-	chars := []rune{'.', ':', '-', '=', '+', '*', '#', '%', '@'}
+	// Simple ASCII art mapping with good contrast
+	chars := []rune{' ', '.', ':', '-', '=', '+', '*', '#', '@'}
 
-	// Cyberpunk color palette
+	// Elegant purple color palette (from dark to bright, no white)
 	colors := []tcell.Color{
-		tcell.NewRGBColor(0, 50, 50),     // Dark cyan
-		tcell.NewRGBColor(0, 100, 100),   // Darker cyan
-		tcell.NewRGBColor(0, 150, 150),   // Medium cyan
-		tcell.NewRGBColor(0, 200, 200),   // Bright cyan
-		tcell.NewRGBColor(0, 255, 255),   // Brightest cyan
-		tcell.NewRGBColor(100, 255, 255), // Light cyan
-		tcell.NewRGBColor(150, 255, 255), // Very light cyan
-		tcell.NewRGBColor(200, 255, 255), // Almost white cyan
-		tcell.NewRGBColor(255, 255, 255), // White
+		tcell.NewRGBColor(20, 10, 30),    // Very dark purple (shadows)
+		tcell.NewRGBColor(50, 25, 75),    // Dark purple
+		tcell.NewRGBColor(80, 40, 120),   // Medium-dark purple
+		tcell.NewRGBColor(110, 60, 160),  // Medium purple
+		tcell.NewRGBColor(140, 80, 200),  // Bright purple
+		tcell.NewRGBColor(170, 110, 230), // Brighter purple
+		tcell.NewRGBColor(190, 140, 240), // Very bright purple
+		tcell.NewRGBColor(210, 170, 250), // Light purple
+		tcell.NewRGBColor(230, 200, 255), // Very light purple (max)
 	}
 
 	idx := int(intensity * float32(len(chars)-1))

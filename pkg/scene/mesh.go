@@ -69,3 +69,69 @@ func (m *Mesh) BuildTriangles() {
 		m.Triangles = append(m.Triangles, tri)
 	}
 }
+
+// GetBounds calculates the bounding box of the mesh
+func (m *Mesh) GetBounds() (min, max Vec3) {
+	if len(m.Vertices) == 0 {
+		return Vec3{}, Vec3{}
+	}
+
+	min = m.Vertices[0]
+	max = m.Vertices[0]
+
+	for _, v := range m.Vertices {
+		if v.X < min.X {
+			min.X = v.X
+		}
+		if v.Y < min.Y {
+			min.Y = v.Y
+		}
+		if v.Z < min.Z {
+			min.Z = v.Z
+		}
+		if v.X > max.X {
+			max.X = v.X
+		}
+		if v.Y > max.Y {
+			max.Y = v.Y
+		}
+		if v.Z > max.Z {
+			max.Z = v.Z
+		}
+	}
+
+	return min, max
+}
+
+// GetCenter calculates the center of the mesh
+func (m *Mesh) GetCenter() Vec3 {
+	min, max := m.GetBounds()
+	return Vec3{
+		X: (min.X + max.X) * 0.5,
+		Y: (min.Y + max.Y) * 0.5,
+		Z: (min.Z + max.Z) * 0.5,
+	}
+}
+
+// GetSize calculates the size of the mesh
+func (m *Mesh) GetSize() Vec3 {
+	min, max := m.GetBounds()
+	return Vec3{
+		X: max.X - min.X,
+		Y: max.Y - min.Y,
+		Z: max.Z - min.Z,
+	}
+}
+
+// GetMaxDimension returns the largest dimension of the mesh
+func (m *Mesh) GetMaxDimension() float32 {
+	size := m.GetSize()
+	maxDim := size.X
+	if size.Y > maxDim {
+		maxDim = size.Y
+	}
+	if size.Z > maxDim {
+		maxDim = size.Z
+	}
+	return maxDim
+}

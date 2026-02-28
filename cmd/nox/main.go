@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -122,10 +123,41 @@ func runTest(modelPath string) {
 		os.Exit(1)
 	}
 
-	// Initialize camera
+	// Calculate model bounds for auto-scaling
+	center := mesh.GetCenter()
+	maxDim := mesh.GetMaxDimension()
+
+	// Calculate optimal camera distance to fit model in view
 	width, height := screen.Size()
 	camera := scene.NewCamera()
 	camera.Aspect = float32(width) / float32(height)
+
+	// Set camera target to model center
+	camera.Target = center
+
+	// Calculate distance based on model size, FOV, and aspect ratio
+	// Account for terminal character aspect ratio (chars are ~2x taller than wide)
+
+	// Calculate distance needed to fit model horizontally and vertically
+	// Use the smaller FOV dimension to ensure model fits in both directions
+	effectiveAspect := camera.Aspect * 0.5 // Account for character aspect ratio
+	var effectiveFOV float32
+	if effectiveAspect < 1.0 {
+		// Portrait mode: vertical FOV is limiting
+		effectiveFOV = camera.FOV
+	} else {
+		// Landscape mode: horizontal FOV is limiting
+		effectiveFOV = 2.0 * float32(math.Atan(math.Tan(float64(camera.FOV*0.5))/float64(effectiveAspect)))
+	}
+
+	// Calculate optimal distance with very tight framing to fill screen
+	// Use smaller multiplier to make model appear much larger
+	optimalDistance := (maxDim * 1.1) / (2.0 * float32(math.Tan(float64(effectiveFOV*0.5))))
+	camera.Distance = optimalDistance * 0.5 // Reduce distance by 50% to make model 2x larger
+
+	// Position camera at a nice angle with lower elevation
+	camera.Yaw = float32(math.Pi * 0.25)   // 45 degrees horizontal
+	camera.Pitch = float32(math.Pi * 0.05) // ~9 degrees up (much lower elevation)
 	camera.UpdateOrbit()
 
 	// Initialize renderer
@@ -198,6 +230,19 @@ func runTest(modelPath string) {
 			case *tcell.EventResize:
 				width, height = screen.Size()
 				camera.Aspect = float32(width) / float32(height)
+
+				// Recalculate optimal distance for new aspect ratio
+				effectiveAspect := camera.Aspect * 0.5
+				var effectiveFOV float32
+				if effectiveAspect < 1.0 {
+					effectiveFOV = camera.FOV
+				} else {
+					effectiveFOV = 2.0 * float32(math.Atan(math.Tan(float64(camera.FOV*0.5))/float64(effectiveAspect)))
+				}
+				optimalDistance := (maxDim * 1.1) / (2.0 * float32(math.Tan(float64(effectiveFOV*0.5))))
+				camera.Distance = optimalDistance * 0.5 // Same 50% reduction as initial setup
+				camera.UpdateOrbit()
+
 				rasterizer = render.NewRasterizer(width, height)
 			}
 		}
