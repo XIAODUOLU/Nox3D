@@ -17,7 +17,9 @@ import (
 
 var (
 	// Flags
-	fps int
+	fps        int
+	autoRotate bool
+	noRotate   bool
 )
 
 func main() {
@@ -44,6 +46,8 @@ Supports OBJ, GLB, and FBX formats.`,
 		},
 	}
 	testCmd.Flags().IntVar(&fps, "fps", 30, "Target frames per second")
+	testCmd.Flags().BoolVar(&autoRotate, "auto-rotate", false, "Enable auto-rotation on startup")
+	testCmd.Flags().BoolVar(&noRotate, "no-rotate", false, "Disable auto-rotation on startup (default)")
 
 	// Completion command
 	completionCmd := &cobra.Command{
@@ -173,6 +177,17 @@ func runTest(modelPath string) {
 	var lastMouseX, lastMouseY int
 	modelRotation := float32(0)
 
+	// Determine initial auto-rotate state
+	shouldAutoRotate := true // Auto-rotate by default
+	if noRotate {
+		shouldAutoRotate = false
+	}
+	if autoRotate {
+		shouldAutoRotate = true
+	}
+
+	rotationSpeed := float32(0.01) // Rotation speed per frame
+
 	for running {
 		// Handle events
 		for screen.HasPendingEvent() {
@@ -186,20 +201,31 @@ func runTest(modelPath string) {
 					switch ev.Rune() {
 					case 'q', 'Q':
 						running = false
+					case 'r', 'R':
+						// Toggle auto-rotation
+						shouldAutoRotate = !shouldAutoRotate
 					case 'w', 'W':
+						shouldAutoRotate = false // Stop auto-rotation on manual control
 						camera.Target.Y += 0.1
 						camera.UpdateOrbit()
 					case 's', 'S':
+						shouldAutoRotate = false
 						camera.Target.Y -= 0.1
 						camera.UpdateOrbit()
 					case 'a', 'A':
+						shouldAutoRotate = false
 						camera.Target.X -= 0.1
 						camera.UpdateOrbit()
 					case 'd', 'D':
+						shouldAutoRotate = false
 						camera.Target.X += 0.1
 						camera.UpdateOrbit()
 					case 'e', 'E':
+						shouldAutoRotate = false
 						modelRotation += 0.1
+					case ' ':
+						// Space bar: toggle auto-rotation
+						shouldAutoRotate = !shouldAutoRotate
 					}
 				}
 
@@ -208,6 +234,7 @@ func runTest(modelPath string) {
 				buttons := ev.Buttons()
 
 				if buttons&tcell.Button1 != 0 { // Left button
+					shouldAutoRotate = false // Stop auto-rotation on mouse interaction
 					if mouseDown {
 						deltaX := float32(x - lastMouseX)
 						deltaY := float32(y - lastMouseY)
@@ -222,8 +249,10 @@ func runTest(modelPath string) {
 
 				// Mouse wheel
 				if buttons&tcell.WheelUp != 0 {
+					shouldAutoRotate = false // Stop auto-rotation on zoom
 					camera.Zoom(-0.5)
 				} else if buttons&tcell.WheelDown != 0 {
+					shouldAutoRotate = false
 					camera.Zoom(0.5)
 				}
 
@@ -252,10 +281,23 @@ func runTest(modelPath string) {
 		if currentTime.Sub(lastTime) >= frameDuration {
 			lastTime = currentTime
 
+			// Auto-rotate if enabled
+			if shouldAutoRotate {
+				modelRotation += rotationSpeed
+			}
+
 			screen.Clear()
 
 			// Calculate MVP matrix
-			model := scene.RotationY(modelRotation)
+			// First, center the model at origin
+			centerTransform := scene.Translation(-center.X, -center.Y, -center.Z)
+
+			// Apply rotation
+			rotation := scene.RotationY(modelRotation)
+
+			// Combine transformations: Rotation -> Center
+			model := rotation.Multiply(centerTransform)
+
 			view := camera.GetViewMatrix()
 			projection := camera.GetProjectionMatrix()
 			mvp := projection.Multiply(view).Multiply(model)
@@ -273,16 +315,23 @@ func runTest(modelPath string) {
 }
 
 func loadModel(filepath string) (*scene.Mesh, error) {
-	ext := strings.ToLower(filepath[len(filepath)-4:])
-
-	var l loader.Loader
+	// Get file extension
+	ext := ""
+	for i := len(filepath) - 1; i >= 0; i-- {
+		if filepath[i] == '.' {
+			ext = strings.ToLower(filepath[i:])
+			break
+		}
+	}
 
 	switch ext {
 	case ".obj":
-		l = loader.NewOBJLoader()
+		l := loader.NewOBJLoader()
+		return l.Load(filepath)
+	case ".glb", ".gltf":
+		l := loader.NewGLBLoader()
+		return l.Load(filepath)
 	default:
-		return nil, fmt.Errorf("unsupported file format: %s", ext)
+		return nil, fmt.Errorf("unsupported file format: %s (supported: .obj, .glb, .gltf)", ext)
 	}
-
-	return l.Load(filepath)
 }

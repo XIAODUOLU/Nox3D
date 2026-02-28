@@ -4,6 +4,8 @@ go 1.24.0
 
 require github.com/gdamore/tcell/v2 v2.13.8
 
+require github.com/qmuntal/gltf v0.28.0 // indirect
+
 require (
 	github.com/gdamore/encoding v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

@@ -70,12 +70,10 @@ Enable tab completion for your shell:
 ./install-completion.sh fish
 ```
 
-See [docs/COMPLETION.md](docs/COMPLETION.md) for details.
-
 ## Supported Formats
 
 - ✅ OBJ (.obj)
-- 🚧 GLTF/GLB (.glb) - Coming soon
+- ✅ GLTF/GLB (.glb)
 - 🚧 FBX (.fbx) - Coming soon
 
 ## Requirements
