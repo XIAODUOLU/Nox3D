@@ -29,6 +29,28 @@ func (l *GLBLoader) Load(filepath string) (*scene.Mesh, error) {
 	// Process all meshes in the document
 	for _, gltfMesh := range doc.Meshes {
 		for _, primitive := range gltfMesh.Primitives {
+			// Extract material information if available
+			if primitive.Material != nil {
+				mat := doc.Materials[*primitive.Material]
+				if mat.PBRMetallicRoughness != nil {
+					pbr := mat.PBRMetallicRoughness
+					if pbr.BaseColorFactor != nil {
+						mesh.Material.BaseColor = scene.Vec3{
+							X: float32(pbr.BaseColorFactor[0]),
+							Y: float32(pbr.BaseColorFactor[1]),
+							Z: float32(pbr.BaseColorFactor[2]),
+						}
+						mesh.Material.HasBaseColor = true
+					}
+					if pbr.MetallicFactor != nil {
+						mesh.Material.Metallic = float32(*pbr.MetallicFactor)
+					}
+					if pbr.RoughnessFactor != nil {
+						mesh.Material.Roughness = float32(*pbr.RoughnessFactor)
+					}
+				}
+			}
+
 			// Get position accessor
 			posAccessor, ok := primitive.Attributes[gltf.POSITION]
 			if !ok {
@@ -76,6 +98,23 @@ func (l *GLBLoader) Load(filepath string) (*scene.Mesh, error) {
 						mesh.UVs = append(mesh.UVs, scene.Vec2{
 							X: tc[0],
 							Y: tc[1],
+						})
+					}
+				}
+			}
+
+			// Read vertex colors if available (COLOR_0 attribute)
+			if colorAccessor, ok := primitive.Attributes[gltf.COLOR_0]; ok {
+				accessor := doc.Accessors[colorAccessor]
+				colors, err := modeler.ReadColor(doc, accessor, nil)
+				if err == nil {
+					for _, col := range colors {
+						// Colors can be RGB or RGBA, we only use RGB
+						// Normalize from 0-255 to 0-1 range
+						mesh.Colors = append(mesh.Colors, scene.Vec3{
+							X: float32(col[0]) / 255.0,
+							Y: float32(col[1]) / 255.0,
+							Z: float32(col[2]) / 255.0,
 						})
 					}
 				}

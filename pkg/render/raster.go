@@ -7,11 +7,20 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+// RenderMode represents the current rendering mode
+type RenderMode int
+
+const (
+	RenderModeSolid RenderMode = iota
+	RenderModeWireframe
+)
+
 // Rasterizer performs software rasterization
 type Rasterizer struct {
 	width   int
 	height  int
 	zBuffer [][]float32
+	Mode    RenderMode
 }
 
 // NewRasterizer creates a new rasterizer
@@ -20,6 +29,7 @@ func NewRasterizer(width, height int) *Rasterizer {
 		width:   width,
 		height:  height,
 		zBuffer: make([][]float32, height),
+		Mode:    RenderModeSolid,
 	}
 
 	for i := range r.zBuffer {
@@ -48,10 +58,16 @@ func (r *Rasterizer) Render(mesh *scene.Mesh, mvp scene.Mat4, buffer ScreenBuffe
 	r.ClearDepth()
 
 	// Enhanced lighting setup with multiple light sources
-	// Main light (key light) - from upper right
-	keyLight := scene.Normalize(scene.Vec3{X: 0.6, Y: 0.8, Z: 1.0})
+	// Main light (key light) - from upper right front
+	keyLight := scene.Normalize(scene.Vec3{X: 0.5, Y: 0.7, Z: 1.0})
 	// Fill light - from left
-	fillLight := scene.Normalize(scene.Vec3{X: -0.5, Y: 0.3, Z: 0.5})
+	fillLight := scene.Normalize(scene.Vec3{X: -0.6, Y: 0.2, Z: 0.4})
+	// Rim light - from behind (for edge highlighting)
+	rimLight := scene.Normalize(scene.Vec3{X: 0.0, Y: 0.3, Z: -1.0})
+
+	// Get base color from material
+	baseColor := mesh.Material.BaseColor
+	hasColor := mesh.Material.HasBaseColor || len(mesh.Colors) > 0
 
 	for _, tri := range mesh.Triangles {
 		// Transform vertices
@@ -90,9 +106,21 @@ func (r *Rasterizer) Render(mesh *scene.Mesh, mvp scene.Mat4, buffer ScreenBuffe
 			fillIntensity = 0
 		}
 
+		// Rim light contribution (edge highlighting for 3D depth)
+		rimIntensity := scene.Dot(faceNormal, rimLight)
+		if rimIntensity < 0 {
+			rimIntensity = 0
+		}
+		// Rim light is stronger on edges (inverse of view angle)
+		viewDir := scene.Normalize(scene.Vec3{X: 0, Y: 0, Z: 1})
+		viewDot := scene.Dot(faceNormal, viewDir)
+		if viewDot < 0 {
+			viewDot = 0
+		}
+		rimIntensity *= (1.0 - viewDot) // Stronger on edges
+
 		// Specular highlight simulation (view-dependent)
 		// Calculate reflection vector for specular
-		viewDir := scene.Normalize(scene.Vec3{X: 0, Y: 0, Z: 1})
 		reflectDir := scene.Sub(
 			scene.Vec3{
 				X: 2 * faceNormal.X * keyIntensity,
@@ -105,23 +133,141 @@ func (r *Rasterizer) Render(mesh *scene.Mesh, mvp scene.Mat4, buffer ScreenBuffe
 		if specular < 0 {
 			specular = 0
 		}
-		specular = float32(math.Pow(float64(specular), 16)) // Shininess factor
+		specular = float32(math.Pow(float64(specular), 32)) // Higher shininess for sharper highlights
 
-		// Combine lighting: ambient + diffuse (key + fill) + specular
-		ambient := float32(0.15)
-		diffuse := keyIntensity*0.7 + fillIntensity*0.3
-		intensity := ambient + diffuse + specular*0.4
+		// Ambient occlusion approximation (darker in concave areas)
+		// Use depth as a proxy - deeper areas are slightly darker
+		ao := float32(1.0)
+		avgDepth := (v0.Z + v1.Z + v2.Z) / 3.0
+		if avgDepth > 0.5 {
+			ao = 0.85 // Slightly darker for distant surfaces
+		}
+
+		// Combine lighting: ambient + diffuse (key + fill) + rim + specular
+		ambient := float32(0.12) * ao // Lower ambient for more contrast
+		diffuse := keyIntensity*0.65 + fillIntensity*0.25
+		rim := rimIntensity * 0.3 // Rim light contribution
+		intensity := ambient + diffuse + rim + specular*0.5
 
 		// Clamp intensity
 		if intensity > 1.0 {
 			intensity = 1.0
 		}
 
-		// Get color and character based on intensity
-		char, color := r.intensityToChar(intensity)
+		// Get vertex color if available (average of triangle vertices)
+		triColor := baseColor
+		if len(mesh.Colors) > 0 {
+			// Average vertex colors
+			triColor = scene.Vec3{
+				X: (tri.C0.X + tri.C1.X + tri.C2.X) / 3.0,
+				Y: (tri.C0.Y + tri.C1.Y + tri.C2.Y) / 3.0,
+				Z: (tri.C0.Z + tri.C1.Z + tri.C2.Z) / 3.0,
+			}
+		}
 
-		// Rasterize triangle
-		r.rasterizeTriangle(s0, s1, s2, char, color, buffer)
+		if r.Mode == RenderModeWireframe {
+			// Wireframe rendering - use thin characters for edges
+			// Use a bright color for wireframe
+			var wireColor tcell.Color
+			if hasColor {
+				// Boost brightness for wireframe visibility
+				r := int32(float32(triColor.X) * 255 * 1.5)
+				g := int32(float32(triColor.Y) * 255 * 1.5)
+				b := int32(float32(triColor.Z) * 255 * 1.5)
+				if r > 255 {
+					r = 255
+				}
+				if g > 255 {
+					g = 255
+				}
+				if b > 255 {
+					b = 255
+				}
+				wireColor = tcell.NewRGBColor(r, g, b)
+			} else {
+				// Use bright cyan for default wireframe
+				wireColor = tcell.NewRGBColor(0, 255, 255)
+			}
+
+			// Use thin line character for wireframe
+			wireChar := rune('-')
+			r.drawLine(s0, s1, wireChar, wireColor, buffer)
+			r.drawLine(s1, s2, wireChar, wireColor, buffer)
+			r.drawLine(s2, s0, wireChar, wireColor, buffer)
+		} else {
+			// Solid rasterization
+			char, color := r.intensityToChar(intensity, triColor, hasColor)
+			r.rasterizeTriangle(s0, s1, s2, char, color, buffer)
+		}
+	}
+}
+
+// drawLine draws a line using Bresenham's algorithm with adaptive character selection
+func (r *Rasterizer) drawLine(v0, v1 scene.Vec3, char rune, color tcell.Color, buffer ScreenBuffer) {
+	x0 := int(v0.X)
+	y0 := int(v0.Y)
+	x1 := int(v1.X)
+	y1 := int(v1.Y)
+
+	dx := math.Abs(float64(x1 - x0))
+	sx := -1
+	if x0 < x1 {
+		sx = 1
+	}
+	dy := -math.Abs(float64(y1 - y0))
+	sy := -1
+	if y0 < y1 {
+		sy = 1
+	}
+	err := dx + dy
+
+	// Determine line orientation for better character selection
+	isHorizontal := dx > math.Abs(dy)
+
+	for {
+		// Boundary check
+		if x0 >= 0 && x0 < r.width && y0 >= 0 && y0 < r.height {
+			// Calculate depth for the current pixel using linear interpolation
+			t := float32(0.0)
+			if dx > math.Abs(dy) {
+				if int(v1.X) != int(v0.X) {
+					t = float32(x0-int(v0.X)) / float32(int(v1.X)-int(v0.X))
+				}
+			} else {
+				if int(v1.Y) != int(v0.Y) {
+					t = float32(y0-int(v0.Y)) / float32(int(v1.Y)-int(v0.Y))
+				}
+			}
+			z := v0.Z + t*(v1.Z-v0.Z)
+
+			// Depth test - wireframe should be on top
+			if z-0.01 < r.zBuffer[y0][x0] {
+				r.zBuffer[y0][x0] = z - 0.01 // Bias to ensure wireframe is visible
+
+				// Use different characters based on line orientation for thinner appearance
+				lineChar := char
+				if isHorizontal {
+					lineChar = '-'
+				} else {
+					lineChar = '|'
+				}
+
+				buffer.SetPixel(x0, y0, lineChar, color)
+			}
+		}
+
+		if x0 == x1 && y0 == y1 {
+			break
+		}
+		e2 := 2 * err
+		if e2 >= dy {
+			err += dy
+			x0 += sx
+		}
+		if e2 <= dx {
+			err += dx
+			y0 += sy
+		}
 	}
 }
 
@@ -136,32 +282,94 @@ func (r *Rasterizer) toScreen(v scene.Vec3) scene.Vec3 {
 }
 
 // intensityToChar maps light intensity to character and color with enhanced 3D effect
-func (r *Rasterizer) intensityToChar(intensity float32) (rune, tcell.Color) {
-	// Simple ASCII art mapping with good contrast
-	chars := []rune{' ', '.', ':', '-', '=', '+', '*', '#', '@'}
+func (r *Rasterizer) intensityToChar(intensity float32, baseColor scene.Vec3, hasColor bool) (rune, tcell.Color) {
+	// Enhanced ASCII art mapping with better depth perception
+	// Using pure ASCII characters for classic terminal aesthetic
+	chars := []rune{' ', '.', ':', '-', '=', '+', '*', '#', '%', '@'}
 
-	// Elegant purple color palette (from dark to bright, no white)
-	colors := []tcell.Color{
-		tcell.NewRGBColor(20, 10, 30),    // Very dark purple (shadows)
-		tcell.NewRGBColor(50, 25, 75),    // Dark purple
-		tcell.NewRGBColor(80, 40, 120),   // Medium-dark purple
-		tcell.NewRGBColor(110, 60, 160),  // Medium purple
-		tcell.NewRGBColor(140, 80, 200),  // Bright purple
-		tcell.NewRGBColor(170, 110, 230), // Brighter purple
-		tcell.NewRGBColor(190, 140, 240), // Very bright purple
-		tcell.NewRGBColor(210, 170, 250), // Light purple
-		tcell.NewRGBColor(230, 200, 255), // Very light purple (max)
+	// Apply non-linear intensity curve for better contrast
+	// This enhances the 3D depth perception
+	intensity = float32(math.Pow(float64(intensity), 0.85))
+
+	// Calculate color based on intensity and base color
+	var finalColor tcell.Color
+
+	if hasColor {
+		// Use material/vertex color with intensity modulation
+		r := int32(baseColor.X * intensity * 255)
+		g := int32(baseColor.Y * intensity * 255)
+		b := int32(baseColor.Z * intensity * 255)
+
+		// Clamp values
+		if r > 255 {
+			r = 255
+		}
+		if g > 255 {
+			g = 255
+		}
+		if b > 255 {
+			b = 255
+		}
+		if r < 0 {
+			r = 0
+		}
+		if g < 0 {
+			g = 0
+		}
+		if b < 0 {
+			b = 0
+		}
+
+		// Add slight color boost for better visibility
+		r = int32(float32(r) * 1.15)
+		g = int32(float32(g) * 1.15)
+		b = int32(float32(b) * 1.15)
+		if r > 255 {
+			r = 255
+		}
+		if g > 255 {
+			g = 255
+		}
+		if b > 255 {
+			b = 255
+		}
+
+		finalColor = tcell.NewRGBColor(r, g, b)
+	} else {
+		// Default elegant color palette with stronger contrast
+		colors := []tcell.Color{
+			tcell.NewRGBColor(10, 5, 15),     // Very dark (deep shadows)
+			tcell.NewRGBColor(30, 15, 45),    // Dark purple
+			tcell.NewRGBColor(60, 30, 90),    // Medium-dark purple
+			tcell.NewRGBColor(90, 50, 135),   // Medium purple
+			tcell.NewRGBColor(120, 70, 180),  // Bright purple
+			tcell.NewRGBColor(150, 95, 220),  // Brighter purple
+			tcell.NewRGBColor(180, 125, 240), // Very bright purple
+			tcell.NewRGBColor(210, 160, 255), // Light purple
+			tcell.NewRGBColor(235, 195, 255), // Very light purple
+			tcell.NewRGBColor(250, 220, 255), // Brightest (highlights)
+		}
+
+		idx := int(intensity * float32(len(colors)-1))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(colors) {
+			idx = len(colors) - 1
+		}
+		finalColor = colors[idx]
 	}
 
-	idx := int(intensity * float32(len(chars)-1))
-	if idx < 0 {
-		idx = 0
+	// Select character based on intensity
+	charIdx := int(intensity * float32(len(chars)-1))
+	if charIdx < 0 {
+		charIdx = 0
 	}
-	if idx >= len(chars) {
-		idx = len(chars) - 1
+	if charIdx >= len(chars) {
+		charIdx = len(chars) - 1
 	}
 
-	return chars[idx], colors[idx]
+	return chars[charIdx], finalColor
 }
 
 // rasterizeTriangle rasterizes a triangle using scanline algorithm

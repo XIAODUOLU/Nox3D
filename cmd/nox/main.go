@@ -226,6 +226,10 @@ func runTest(modelPath string) {
 					case ' ':
 						// Space bar: toggle auto-rotation
 						shouldAutoRotate = !shouldAutoRotate
+					case '1':
+						rasterizer.Mode = render.RenderModeSolid
+					case '2':
+						rasterizer.Mode = render.RenderModeWireframe
 					}
 				}
 
@@ -272,7 +276,10 @@ func runTest(modelPath string) {
 				camera.Distance = optimalDistance * 0.5 // Same 50% reduction as initial setup
 				camera.UpdateOrbit()
 
+				// Preserve mode across resize
+				oldMode := rasterizer.Mode
 				rasterizer = render.NewRasterizer(width, height)
+				rasterizer.Mode = oldMode
 			}
 		}
 

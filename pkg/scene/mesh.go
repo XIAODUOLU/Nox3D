@@ -15,6 +15,15 @@ type Triangle struct {
 	V0, V1, V2    Vec3 // Vertex positions
 	N0, N1, N2    Vec3 // Vertex normals
 	UV0, UV1, UV2 Vec2 // Texture coordinates (optional)
+	C0, C1, C2    Vec3 // Vertex colors (RGB, optional)
+}
+
+// Material represents material properties
+type Material struct {
+	BaseColor    Vec3    // Base color (RGB)
+	Metallic     float32 // Metallic factor
+	Roughness    float32 // Roughness factor
+	HasBaseColor bool    // Whether base color is set
 }
 
 // Mesh represents a 3D mesh
@@ -22,8 +31,10 @@ type Mesh struct {
 	Vertices  []Vec3
 	Normals   []Vec3
 	UVs       []Vec2
+	Colors    []Vec3 // Vertex colors (optional)
 	Indices   []uint32
 	Triangles []Triangle
+	Material  Material // Material properties
 }
 
 // NewMesh creates a new mesh
@@ -32,8 +43,15 @@ func NewMesh() *Mesh {
 		Vertices:  make([]Vec3, 0),
 		Normals:   make([]Vec3, 0),
 		UVs:       make([]Vec2, 0),
+		Colors:    make([]Vec3, 0),
 		Indices:   make([]uint32, 0),
 		Triangles: make([]Triangle, 0),
+		Material: Material{
+			BaseColor:    Vec3{X: 0.8, Y: 0.8, Z: 0.8}, // Default gray
+			Metallic:     0.0,
+			Roughness:    0.5,
+			HasBaseColor: false,
+		},
 	}
 }
 
@@ -53,17 +71,24 @@ func (m *Mesh) BuildTriangles() {
 		}
 
 		// Add normals if available
-		if len(m.Normals) > 0 {
+		if len(m.Normals) > 0 && int(idx0) < len(m.Normals) && int(idx1) < len(m.Normals) && int(idx2) < len(m.Normals) {
 			tri.N0 = m.Normals[idx0]
 			tri.N1 = m.Normals[idx1]
 			tri.N2 = m.Normals[idx2]
 		}
 
 		// Add UVs if available
-		if len(m.UVs) > 0 {
+		if len(m.UVs) > 0 && int(idx0) < len(m.UVs) && int(idx1) < len(m.UVs) && int(idx2) < len(m.UVs) {
 			tri.UV0 = m.UVs[idx0]
 			tri.UV1 = m.UVs[idx1]
 			tri.UV2 = m.UVs[idx2]
+		}
+
+		// Add vertex colors if available
+		if len(m.Colors) > 0 && int(idx0) < len(m.Colors) && int(idx1) < len(m.Colors) && int(idx2) < len(m.Colors) {
+			tri.C0 = m.Colors[idx0]
+			tri.C1 = m.Colors[idx1]
+			tri.C2 = m.Colors[idx2]
 		}
 
 		m.Triangles = append(m.Triangles, tri)
