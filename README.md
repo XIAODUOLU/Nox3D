@@ -1,9 +1,20 @@
 # Nox3D
 
-> Render 3D models in the dark. A terminal-based 3D viewer with ASCII/ANSI art.
+<div align="center">
+
+https://github.com/user-attachments/assets/abbc60cd-0523-4d03-ac96-62eb989a3908
+
+
+</div>
+
+<div align="center">
 
 [![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+</div>
+
+> Render 3D models in the dark. A terminal-based 3D viewer with ASCII/ANSI art.
 
 Nox3D brings 3D graphics to your terminal using pure Go. View and interact with 3D models using ASCII art and cyberpunk-style ANSI colors—no GUI required.
 
@@ -15,6 +26,16 @@ Nox3D brings 3D graphics to your terminal using pure Go. View and interact with 
 - 🎯 **Shell Completion** - Tab completion for Bash, Zsh, Fish, PowerShell
 - 🌈 **Cyberpunk Aesthetic** - Neon colors on black background
 - 📦 **Cross-platform** - Linux, macOS, Windows
+
+## Example
+
+<div align="center">
+
+| ![Nox](assets/image/demo1.gif) | ![Suzanne](assets/image/demo2.gif) | ![Teapot](assets/image/demo3.gif) |
+|:---:|:---:|:---:|
+| Nox | Suzanne | Teapot |
+
+</div>
 
 ## Quick Start
 
